@@ -1,13 +1,29 @@
 from pathlib import Path
-import os
 import tempfile
 
-import easyocr
 import pdfplumber
 import pypdfium2 as pdfium
+import pytesseract
+from PIL import Image
 
 
-reader = easyocr.Reader(["pt"])
+CONFIGURACAO_OCR = "--oem 1 --psm 6"
+
+
+def executar_ocr(imagem: Image.Image) -> str:
+    """
+    Executa OCR em português e inglês.
+
+    A combinação por+eng ajuda quando o documento contém
+    nomes de empresas, datas e termos em idiomas diferentes.
+    """
+    imagem = imagem.convert("RGB")
+
+    return pytesseract.image_to_string(
+        imagem,
+        lang="por+eng",
+        config=CONFIGURACAO_OCR
+    ).strip()
 
 
 def extrair_texto_pdf_normal(caminho: str) -> str:
@@ -31,7 +47,7 @@ def extrair_texto_pdf_com_ocr(caminho: str) -> str:
     documento = pdfium.PdfDocument(caminho)
     textos = []
 
-    with tempfile.TemporaryDirectory() as pasta_temporaria:
+    with tempfile.TemporaryDirectory():
         for numero_pagina in range(len(documento)):
             pagina = documento[numero_pagina]
 
@@ -39,28 +55,18 @@ def extrair_texto_pdf_com_ocr(caminho: str) -> str:
                 scale=2.5
             ).to_pil()
 
-            caminho_imagem = os.path.join(
-                pasta_temporaria,
-                f"pagina_{numero_pagina + 1}.png"
-            )
+            texto_pagina = executar_ocr(imagem)
 
-            imagem.save(caminho_imagem)
-
-            resultado = reader.readtext(
-                caminho_imagem,
-                detail=0,
-                paragraph=True
-            )
-
-            textos.append("\n".join(resultado))
+            if texto_pagina:
+                textos.append(texto_pagina)
 
     return "\n".join(textos)
 
 
 def extrair_texto_pdf(caminho: str) -> str:
     """
-    Primeiro tenta extrair o texto normalmente.
-    Se não encontrar conteúdo suficiente, utiliza OCR.
+    Primeiro tenta extrair texto selecionável.
+    Caso não encontre conteúdo suficiente, utiliza OCR.
     """
 
     texto = extrair_texto_pdf_normal(caminho)
@@ -68,7 +74,10 @@ def extrair_texto_pdf(caminho: str) -> str:
     if len(texto.strip()) >= 30:
         return texto
 
-    print("PDF sem texto selecionável. Iniciando OCR das páginas...")
+    print(
+        "PDF sem texto selecionável. "
+        "Iniciando OCR das páginas..."
+    )
 
     return extrair_texto_pdf_com_ocr(caminho)
 
@@ -76,24 +85,25 @@ def extrair_texto_pdf(caminho: str) -> str:
 def extrair_texto_imagem(caminho: str) -> str:
     """Extrai texto de uma imagem usando OCR."""
 
-    resultado = reader.readtext(
-        caminho,
-        detail=0,
-        paragraph=True
-    )
-
-    return "\n".join(resultado)
+    with Image.open(caminho) as imagem:
+        return executar_ocr(imagem)
 
 
 def extrair_texto(caminho: str) -> str:
-    """Identifica o tipo do arquivo e escolhe o extrator adequado."""
+    """Identifica o formato e escolhe o extrator adequado."""
 
     extensao = Path(caminho).suffix.lower()
 
     if extensao == ".pdf":
         return extrair_texto_pdf(caminho)
 
-    if extensao in {".jpg", ".jpeg", ".png", ".webp", ".bmp"}:
+    if extensao in {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".bmp"
+    }:
         return extrair_texto_imagem(caminho)
 
     raise ValueError(
