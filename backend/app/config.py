@@ -1,6 +1,16 @@
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
+
 
 load_dotenv()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+GROQ_API_KEY = (
+    os.getenv("GROQ_API_KEY", "").strip()
+)
+
+if not GROQ_API_KEY:
+    raise RuntimeError(
+        "A variável GROQ_API_KEY não foi configurada."
+    )
