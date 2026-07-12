@@ -1,9 +1,19 @@
 import json
 
-from openai import OpenAI
+from openai import APIStatusError, APITimeoutError, OpenAI
 
 from app.config import GROQ_API_KEY
 
+print(
+    "\n======================================"
+)
+print("Modelo: openai/gpt-oss-20b")
+print(
+    f"API carregada: {GROQ_API_KEY[:10]}...{GROQ_API_KEY[-6:]}"
+)
+print(
+    "======================================\n"
+)
 
 client = OpenAI(
     api_key=GROQ_API_KEY,
@@ -13,59 +23,42 @@ client = OpenAI(
 
 def interpretar_documento(texto: str) -> list[dict]:
     prompt = f"""
-Você é especialista em analisar faturas de cartão, recibos e comprovantes.
+Você é especialista em analisar faturas de cartão.
 
-Extraia todas as transações reais encontradas no texto.
+Extraia todas as compras.
 
-Para cada transação, retorne:
-- empresa
-- valor
-- data
-- parcela_atual
-- total_parcelas
+Retorne SOMENTE um JSON válido.
 
-Regras:
-- O valor deve ser um número decimal, sem o símbolo R$.
-- A data deve ser mantida como aparece no documento.
-- Não considere total da fatura, limite, vencimento ou pagamento da fatura
-  como se fossem compras.
-- Quando aparecer algo como "Parcela 2/3", retorne:
-  "parcela_atual": 2
-  "total_parcelas": 3
-- Não remova a informação de parcelamento.
-- Quando não for uma compra parcelada, use null em
-  "parcela_atual" e "total_parcelas".
-- Se não encontrar transações, retorne uma lista vazia.
-
-Responda exatamente neste formato JSON:
+Formato:
 
 {{
   "transacoes": [
     {{
-      "empresa": "UBER",
-      "valor": 32.50,
-      "data": "08/07/2026",
+      "empresa": "",
+      "valor": 0,
+      "data": "",
       "parcela_atual": null,
       "total_parcelas": null
     }}
   ]
 }}
 
-Texto do documento:
+Texto:
 
 {texto}
 """
 
     try:
+
+        print("\nEnviando para a IA...")
+        print(f"Caracteres enviados: {len(texto)}")
+
         resposta = client.chat.completions.create(
-            model="openai/gpt-oss-120b",
+            model="openai/gpt-oss-20b",
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        "Você é um extrator de dados. "
-                        "Responda sempre e somente com um objeto JSON válido."
-                    )
+                    "content": "Responda apenas JSON."
                 },
                 {
                     "role": "user",
@@ -75,32 +68,29 @@ Texto do documento:
             response_format={
                 "type": "json_object"
             },
-            temperature=0
+            temperature=0,
+            timeout=60,
         )
+
+        print("Resposta recebida!")
 
         texto_resposta = resposta.choices[0].message.content
 
         if not texto_resposta:
-            raise ValueError("A IA retornou uma resposta vazia.")
-
-        print("\n========== RESPOSTA DA IA ==========")
-        print(texto_resposta)
-        print("====================================\n")
+            raise ValueError("Resposta vazia.")
 
         dados = json.loads(texto_resposta)
-        transacoes = dados.get("transacoes")
 
-        if not isinstance(transacoes, list):
-            raise ValueError(
-                "A resposta não contém uma lista chamada 'transacoes'."
-            )
+        return dados["transacoes"]
 
-        return transacoes
+    except APITimeoutError:
+        raise RuntimeError("Timeout da IA.")
 
-    except json.JSONDecodeError as erro:
-        raise ValueError(
-            f"A IA retornou um JSON inválido: {erro}"
-        ) from erro
+    except APIStatusError as erro:
 
-    except Exception as erro:
-        raise RuntimeError(str(erro)) from erro
+        print("Status:", erro.status_code)
+
+        raise
+
+    except Exception:
+        raise

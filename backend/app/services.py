@@ -1,30 +1,58 @@
+import time
+
 from app.ai import interpretar_documento
 from app.extractor import extrair_texto
+from app.receipt_parser import interpretar_comprovante
 
 
-def processar_documento(caminho_arquivo: str) -> list[dict]:
+def processar_documento(
+    caminho_arquivo: str
+) -> list[dict]:
+    inicio = time.perf_counter()
+
+    print(">>> Extraindo texto da fatura...")
+
     texto = extrair_texto(caminho_arquivo)
+
+    print(
+        f">>> OCR da fatura concluído em "
+        f"{time.perf_counter() - inicio:.2f}s"
+    )
 
     if not texto.strip():
         raise ValueError(
-            f"Não foi possível extrair texto do arquivo: {caminho_arquivo}"
+            "Não foi possível extrair texto da fatura: "
+            f"{caminho_arquivo}"
         )
 
-    # Evita enviar textos enormes para a IA.
+    print(
+        f">>> Caracteres extraídos: {len(texto)}"
+    )
+
     texto = texto[:15000]
+
+    print(
+        f">>> Caracteres enviados para IA: {len(texto)}"
+    )
+
+    inicio_ia = time.perf_counter()
 
     transacoes = interpretar_documento(texto)
 
+    print(
+        f">>> IA respondeu em "
+        f"{time.perf_counter() - inicio_ia:.2f}s"
+    )
+
     if isinstance(transacoes, dict) and "erro" in transacoes:
         raise RuntimeError(
-            f"Erro ao interpretar o documento com IA: "
+            "Erro ao interpretar a fatura com IA: "
             f"{transacoes['erro']}"
         )
 
     if not isinstance(transacoes, list):
         raise ValueError(
-            "A IA retornou um formato inesperado. "
-            "Era esperada uma lista."
+            "A IA retornou um formato inesperado."
         )
 
     return transacoes
@@ -33,38 +61,41 @@ def processar_documento(caminho_arquivo: str) -> list[dict]:
 def processar_documentos_em_lote(
     documentos: list[tuple[str, str]]
 ) -> list[dict]:
-    textos = []
+    transacoes = []
 
-    for nome_arquivo, caminho_arquivo in documentos:
+    for indice, (nome_arquivo, caminho_arquivo) in enumerate(
+        documentos,
+        start=1
+    ):
+        inicio = time.perf_counter()
+
+        print(
+            f">>> [{indice}/{len(documentos)}] "
+            f"Processando {nome_arquivo}"
+        )
+
         texto = extrair_texto(caminho_arquivo)
+
+        print(
+            f">>> OCR concluído em "
+            f"{time.perf_counter() - inicio:.2f}s"
+        )
 
         if not texto.strip():
             continue
 
-        # Comprovantes normalmente são pequenos.
         texto = texto[:4000]
 
-        textos.append(
-            f"""
-===== ARQUIVO: {nome_arquivo} =====
-{texto}
-===== FIM DO ARQUIVO =====
-"""
+        transacoes.append(
+            interpretar_comprovante(
+                texto=texto,
+                nome_arquivo=nome_arquivo
+            )
         )
 
-    if not textos:
+    if not transacoes:
         raise ValueError(
-            "Não foi possível extrair texto dos comprovantes."
-        )
-
-    texto_completo = "\n".join(textos)
-
-    transacoes = interpretar_documento(texto_completo)
-
-    if not isinstance(transacoes, list):
-        raise ValueError(
-            "A IA retornou um formato inesperado ao analisar "
-            "os comprovantes."
+            "Nenhum comprovante pôde ser processado."
         )
 
     return transacoes
