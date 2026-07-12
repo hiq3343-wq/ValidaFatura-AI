@@ -50,8 +50,10 @@ Texto:
 
     try:
 
-        print("\nEnviando para a IA...")
+        print("\n==============================")
+        print("Enviando para a IA...")
         print(f"Caracteres enviados: {len(texto)}")
+        print("==============================")
 
         resposta = client.chat.completions.create(
             model="openai/gpt-oss-20b",
@@ -83,14 +85,48 @@ Texto:
 
         return dados["transacoes"]
 
-    except APITimeoutError:
-        raise RuntimeError("Timeout da IA.")
+    except APITimeoutError as erro:
+
+        print("\n========== TIMEOUT ==========")
+        print(repr(erro))
+        print("=============================\n")
+
+        raise RuntimeError(
+            "Timeout ao consultar a IA."
+        ) from erro
 
     except APIStatusError as erro:
 
+        print("\n========== API ERROR ==========")
         print("Status:", erro.status_code)
 
-        raise
+        try:
+            print("Body:")
+            print(erro.response.text)
+        except Exception:
+            pass
 
-    except Exception:
-        raise
+        print("===============================\n")
+
+        raise RuntimeError(
+            f"Erro da Groq ({erro.status_code})"
+        ) from erro
+
+    except json.JSONDecodeError as erro:
+
+        print("\n========== JSON ERROR ==========")
+        print(repr(erro))
+        print("===============================\n")
+
+        raise RuntimeError(
+            "JSON inválido retornado pela IA."
+        ) from erro
+
+    except Exception as erro:
+
+        print("\n========== ERRO GERAL ==========")
+        print(type(erro).__name__)
+        print(repr(erro))
+        print("================================\n")
+
+        raise RuntimeError(str(erro)) from erro
