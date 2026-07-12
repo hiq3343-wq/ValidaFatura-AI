@@ -1,28 +1,31 @@
 import os
 from pathlib import Path
-import tempfile
 
 import pdfplumber
 import pypdfium2 as pdfium
 import pytesseract
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 CONFIGURACAO_OCR = "--oem 1 --psm 6"
+
+# Limite usado para reduzir imagens muito grandes antes do OCR.
+# Ajuda bastante no Render, que possui menos CPU.
+MAIOR_LADO_MAXIMO = 1800
 
 
 def configurar_tesseract() -> None:
     """
     Configura automaticamente o caminho do Tesseract no Windows.
 
-    Em Linux/Render, o executável continua sendo localizado pelo PATH
-    do próprio ambiente.
+    Em Linux/Render, o executável continua sendo localizado
+    pelo PATH do próprio ambiente.
     """
     caminho_configurado = os.getenv("TESSERACT_CMD")
 
     if caminho_configurado:
         pytesseract.pytesseract.tesseract_cmd = (
-            caminho_configurado
+            caminho_configurado.strip()
         )
         return
 
@@ -55,20 +58,78 @@ def configurar_tesseract() -> None:
 configurar_tesseract()
 
 
-def executar_ocr(imagem: Image.Image) -> str:
+def preparar_imagem_para_ocr(
+    imagem: Image.Image
+) -> Image.Image:
+    """
+    Corrige a orientação e reduz imagens muito grandes.
+
+    A redução diminui o uso de CPU e deixa o OCR mais rápido,
+    mantendo resolução suficiente para comprovantes.
+    """
+    imagem = ImageOps.exif_transpose(imagem)
+    imagem = imagem.convert("RGB")
+
+    largura, altura = imagem.size
+    maior_lado = max(largura, altura)
+
+    print(
+        f">>> Imagem original: {largura}x{altura}",
+        flush=True,
+    )
+
+    if maior_lado <= MAIOR_LADO_MAXIMO:
+        return imagem
+
+    proporcao = (
+        MAIOR_LADO_MAXIMO / maior_lado
+    )
+
+    nova_largura = max(
+        1,
+        round(largura * proporcao)
+    )
+
+    nova_altura = max(
+        1,
+        round(altura * proporcao)
+    )
+
+    imagem = imagem.resize(
+        (
+            nova_largura,
+            nova_altura,
+        ),
+        Image.Resampling.LANCZOS,
+    )
+
+    print(
+        f">>> Imagem reduzida: "
+        f"{nova_largura}x{nova_altura}",
+        flush=True,
+    )
+
+    return imagem
+
+
+def executar_ocr(
+    imagem: Image.Image
+) -> str:
     """
     Executa OCR em português e inglês.
 
     A combinação por+eng ajuda quando o documento contém
     nomes de empresas, datas e termos em idiomas diferentes.
     """
-    imagem = imagem.convert("RGB")
+    imagem_preparada = preparar_imagem_para_ocr(
+        imagem
+    )
 
     try:
         return pytesseract.image_to_string(
-            imagem,
+            imagem_preparada,
             lang="por+eng",
-            config=CONFIGURACAO_OCR
+            config=CONFIGURACAO_OCR,
         ).strip()
 
     except pytesseract.TesseractNotFoundError as erro:
@@ -90,14 +151,19 @@ def executar_ocr(imagem: Image.Image) -> str:
         ) from erro
 
 
-def extrair_texto_pdf_normal(caminho: str) -> str:
-    """Extrai texto de PDFs que possuem texto selecionável."""
-
+def extrair_texto_pdf_normal(
+    caminho: str
+) -> str:
+    """
+    Extrai texto de PDFs que possuem texto selecionável.
+    """
     paginas = []
 
     with pdfplumber.open(caminho) as pdf:
         for pagina in pdf.pages:
-            texto_pagina = pagina.extract_text() or ""
+            texto_pagina = (
+                pagina.extract_text() or ""
+            )
 
             if texto_pagina.strip():
                 paginas.append(texto_pagina)
@@ -105,26 +171,37 @@ def extrair_texto_pdf_normal(caminho: str) -> str:
     return "\n".join(paginas)
 
 
-def extrair_texto_pdf_com_ocr(caminho: str) -> str:
-    """Converte cada página do PDF em imagem e executa OCR."""
-
+def extrair_texto_pdf_com_ocr(
+    caminho: str
+) -> str:
+    """
+    Converte cada página do PDF em imagem e executa OCR.
+    """
     documento = pdfium.PdfDocument(caminho)
     textos = []
 
     try:
-        for numero_pagina in range(len(documento)):
+        for numero_pagina in range(
+            len(documento)
+        ):
             pagina = documento[numero_pagina]
 
-            imagem = pagina.render(
-                scale=2.5
-            ).to_pil()
+            try:
+                imagem = pagina.render(
+                    scale=2.5
+                ).to_pil()
 
-            texto_pagina = executar_ocr(imagem)
+                texto_pagina = executar_ocr(
+                    imagem
+                )
 
-            if texto_pagina:
-                textos.append(texto_pagina)
+                if texto_pagina:
+                    textos.append(
+                        texto_pagina
+                    )
 
-            pagina.close()
+            finally:
+                pagina.close()
 
     finally:
         documento.close()
@@ -132,39 +209,54 @@ def extrair_texto_pdf_com_ocr(caminho: str) -> str:
     return "\n".join(textos)
 
 
-def extrair_texto_pdf(caminho: str) -> str:
+def extrair_texto_pdf(
+    caminho: str
+) -> str:
     """
     Primeiro tenta extrair texto selecionável.
+
     Caso não encontre conteúdo suficiente, utiliza OCR.
     """
-
-    texto = extrair_texto_pdf_normal(caminho)
+    texto = extrair_texto_pdf_normal(
+        caminho
+    )
 
     if len(texto.strip()) >= 30:
         return texto
 
     print(
         "PDF sem texto selecionável. "
-        "Iniciando OCR das páginas..."
+        "Iniciando OCR das páginas...",
+        flush=True,
     )
 
-    return extrair_texto_pdf_com_ocr(caminho)
+    return extrair_texto_pdf_com_ocr(
+        caminho
+    )
 
 
-def extrair_texto_imagem(caminho: str) -> str:
-    """Extrai texto de uma imagem usando OCR."""
-
+def extrair_texto_imagem(
+    caminho: str
+) -> str:
+    """
+    Extrai texto de uma imagem usando OCR.
+    """
     with Image.open(caminho) as imagem:
         return executar_ocr(imagem)
 
 
-def extrair_texto(caminho: str) -> str:
-    """Identifica o formato e escolhe o extrator adequado."""
-
+def extrair_texto(
+    caminho: str
+) -> str:
+    """
+    Identifica o formato e escolhe o extrator adequado.
+    """
     extensao = Path(caminho).suffix.lower()
 
     if extensao == ".pdf":
-        return extrair_texto_pdf(caminho)
+        return extrair_texto_pdf(
+            caminho
+        )
 
     if extensao in {
         ".jpg",
@@ -173,7 +265,9 @@ def extrair_texto(caminho: str) -> str:
         ".webp",
         ".bmp",
     }:
-        return extrair_texto_imagem(caminho)
+        return extrair_texto_imagem(
+            caminho
+        )
 
     raise ValueError(
         f"Formato de arquivo não suportado: {extensao}"
