@@ -11,7 +11,7 @@ CONFIGURACAO_OCR = "--oem 1 --psm 6"
 
 # Limite usado para reduzir imagens muito grandes antes do OCR.
 # Ajuda bastante no Render, que possui menos CPU.
-MAIOR_LADO_MAXIMO = 1800
+MAIOR_LADO_MAXIMO = 1000
 
 
 def configurar_tesseract() -> None:
