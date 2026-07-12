@@ -100,29 +100,6 @@ def realizar_requisicao(
 
                 time.sleep(espera)
 
-        except Exception as erro:
-            print(
-                "\n========== ERRO INESPERADO ==========",
-                flush=True,
-            )
-            print(
-                f"Tipo: {type(erro).__name__}",
-                flush=True,
-            )
-            print(
-                f"Detalhes: {erro!r}",
-                flush=True,
-            )
-            print(
-                "=====================================\n",
-                flush=True,
-            )
-
-            raise RuntimeError(
-                "Erro inesperado ao preparar a conexão "
-                f"com a Groq: {erro}"
-            ) from erro
-
     raise RuntimeError(
         "Não foi possível conectar à Groq após "
         f"{TENTATIVAS_MAXIMAS} tentativas. "
@@ -146,26 +123,12 @@ Ignore:
 - pagamento mínimo;
 - informações que não sejam compras.
 
-Retorne somente um objeto JSON válido neste formato:
-
-{{
-  "transacoes": [
-    {{
-      "empresa": "UBER",
-      "valor": 32.50,
-      "data": "08 JUL",
-      "parcela_atual": null,
-      "total_parcelas": null
-    }}
-  ]
-}}
-
-Regras:
-- valor deve ser numérico;
-- preserve a data como aparece;
-- informe parcela_atual e total_parcelas quando houver;
-- use null quando não houver parcelamento;
-- se não houver compras, retorne "transacoes" como lista vazia.
+Para cada compra, identifique:
+- empresa;
+- valor;
+- data;
+- parcela atual;
+- total de parcelas.
 
 Texto da fatura:
 
@@ -178,8 +141,8 @@ Texto da fatura:
             {
                 "role": "system",
                 "content": (
-                    "Você é um extrator de dados. "
-                    "Responda somente com JSON válido."
+                    "Você é um extrator de dados de faturas. "
+                    "Extraia somente compras reais."
                 ),
             },
             {
@@ -188,9 +151,76 @@ Texto da fatura:
             },
         ],
         "response_format": {
-            "type": "json_object",
+            "type": "json_schema",
+            "json_schema": {
+                "name": "transacoes_fatura",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "transacoes": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "empresa": {
+                                        "type": "string",
+                                    },
+                                    "valor": {
+                                        "type": "number",
+                                    },
+                                    "data": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                            },
+                                            {
+                                                "type": "null",
+                                            },
+                                        ],
+                                    },
+                                    "parcela_atual": {
+                                        "anyOf": [
+                                            {
+                                                "type": "integer",
+                                            },
+                                            {
+                                                "type": "null",
+                                            },
+                                        ],
+                                    },
+                                    "total_parcelas": {
+                                        "anyOf": [
+                                            {
+                                                "type": "integer",
+                                            },
+                                            {
+                                                "type": "null",
+                                            },
+                                        ],
+                                    },
+                                },
+                                "required": [
+                                    "empresa",
+                                    "valor",
+                                    "data",
+                                    "parcela_atual",
+                                    "total_parcelas",
+                                ],
+                                "additionalProperties": False,
+                            },
+                        },
+                    },
+                    "required": [
+                        "transacoes",
+                    ],
+                    "additionalProperties": False,
+                },
+            },
         },
         "temperature": 0,
+        "reasoning_effort": "low",
+        "max_completion_tokens": 4096,
     }
 
     print("\n==============================")
