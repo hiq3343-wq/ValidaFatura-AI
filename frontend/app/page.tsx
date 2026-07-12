@@ -33,17 +33,35 @@ type Transacao = {
   data: string | null;
   parcela_atual?: number | null;
   total_parcelas?: number | null;
+  arquivo_origem?: string | null;
 };
 
 
 type Comparacao = {
+  resultado:
+    | "confirmado"
+    | "divergencia_data"
+    | "nao_encontrado"
+    | "sem_comprovante";
+
+  status: string;
+
   empresa: string;
-  empresa_fatura?: string;
+  empresa_fatura?: string | null;
+
   recibo?: number | null;
   fatura?: number | null;
-  data_recibo?: string;
-  data_fatura?: string;
-  status: string;
+
+  data_recibo?: string | null;
+  data_fatura?: string | null;
+
+  diferenca_dias?: number | null;
+  similaridade?: number | null;
+
+  parcela_atual?: number | null;
+  total_parcelas?: number | null;
+
+  arquivo_origem?: string | null;
 };
 
 
@@ -68,8 +86,9 @@ const ETAPAS_CARREGAMENTO = [
     icone: ScanText,
   },
   {
-    titulo: "Analisando com IA",
-    descricao: "Identificando empresas, valores, datas e parcelas.",
+    titulo: "Analisando a fatura com IA",
+    descricao:
+      "Identificando os lançamentos, valores e parcelamentos.",
     icone: BrainCircuit,
   },
   {
@@ -167,7 +186,7 @@ export default function Home() {
       setResultado(null);
 
       const resposta = await fetch(
-  `${API_URL}/validar`,
+        `${API_URL}/validar`,
         {
           method: "POST",
           body: formulario,
@@ -261,8 +280,8 @@ export default function Home() {
 
   const totalConfirmados = useMemo(() => {
     return (
-      resultado?.comparacao.filter((item) =>
-        item.status.startsWith("CONFIRMADO")
+      resultado?.comparacao.filter(
+        (item) => item.resultado === "confirmado"
       ).length ?? 0
     );
   }, [resultado]);
@@ -272,10 +291,25 @@ export default function Home() {
     return (
       resultado?.comparacao.filter(
         (item) =>
-          !item.status.startsWith("CONFIRMADO")
+          item.resultado === "divergencia_data" ||
+          item.resultado === "nao_encontrado"
       ).length ?? 0
     );
   }, [resultado]);
+
+
+  const totalSemComprovante = useMemo(() => {
+    return (
+      resultado?.comparacao.filter(
+        (item) =>
+          item.resultado === "sem_comprovante"
+      ).length ?? 0
+    );
+  }, [resultado]);
+
+
+  const totalPendencias =
+    totalDivergencias + totalSemComprovante;
 
 
   const percentualConfirmado = useMemo(() => {
@@ -539,8 +573,8 @@ export default function Home() {
               />
 
               <ResumoCard
-                titulo="Divergências"
-                valor={totalDivergencias}
+                titulo="Pendências"
+                valor={totalPendencias}
                 descricao="Itens que precisam de revisão"
                 classes="border-red-200 bg-red-50 text-red-800"
                 icone={<CircleAlert size={22} />}
@@ -564,7 +598,7 @@ export default function Home() {
                   <ShieldCheck size={19} />
 
                   {totalConfirmados} de{" "}
-                  {resultado.comparacao.length} comprovantes
+                  {resultado.comparacao.length} lançamentos
                 </div>
               </div>
 
@@ -642,12 +676,31 @@ export default function Home() {
                             key={`${item.empresa}-${indice}`}
                             className="transition hover:bg-slate-50"
                           >
-                            <td className="px-6 py-4 font-semibold">
-                              {item.empresa}
+                            <td className="px-6 py-4">
+                              <p className="font-semibold">
+                                {item.empresa}
+                              </p>
+
+                              {item.arquivo_origem && (
+                                <p
+                                  className="mt-1 max-w-[220px] truncate text-xs text-slate-400"
+                                  title={item.arquivo_origem}
+                                >
+                                  {item.arquivo_origem}
+                                </p>
+                              )}
                             </td>
 
                             <td className="px-6 py-4 text-slate-600">
-                              {item.empresa_fatura ?? "—"}
+                              <p>{item.empresa_fatura ?? "—"}</p>
+
+                              {item.parcela_atual &&
+                                item.total_parcelas && (
+                                  <p className="mt-1 text-xs font-semibold text-blue-600">
+                                    Parcela {item.parcela_atual}/
+                                    {item.total_parcelas}
+                                  </p>
+                                )}
                             </td>
 
                             <td className="px-6 py-4 font-medium">
@@ -712,6 +765,23 @@ export default function Home() {
                               {item.empresa_fatura ??
                                 "Não encontrado"}
                             </p>
+
+                            {item.parcela_atual &&
+                              item.total_parcelas && (
+                                <p className="mt-1 text-xs font-semibold text-blue-600">
+                                  Parcela {item.parcela_atual}/
+                                  {item.total_parcelas}
+                                </p>
+                              )}
+
+                            {item.arquivo_origem && (
+                              <p
+                                className="mt-1 max-w-[220px] truncate text-xs text-slate-400"
+                                title={item.arquivo_origem}
+                              >
+                                {item.arquivo_origem}
+                              </p>
+                            )}
                           </div>
 
                           <span
