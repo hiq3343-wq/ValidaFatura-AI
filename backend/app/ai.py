@@ -212,6 +212,23 @@ Texto da fatura:
         )
 
     if not resposta.ok:
+        print(
+            "\n========== RESPOSTA DE ERRO DA GROQ ==========",
+            flush=True,
+        )
+        print(
+            f"Status: {resposta.status_code}",
+            flush=True,
+        )
+        print(
+            f"Body: {resposta.text}",
+            flush=True,
+        )
+        print(
+            "==============================================\n",
+            flush=True,
+        )
+
         raise RuntimeError(
             f"Erro da Groq ({resposta.status_code}): "
             f"{resposta.text}"
