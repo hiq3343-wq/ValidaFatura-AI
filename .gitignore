@@ -1,0 +1,45 @@
+# Segredos e variáveis de ambiente
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Ambientes virtuais Python
+.venv/
+**/.venv/
+venv/
+**/venv/
+
+# Cache e arquivos compilados Python
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Uploads e documentos processados
+uploads/
+**/uploads/
+
+# Next.js / Node
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+out/
+**/out/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Editores e sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

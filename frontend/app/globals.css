@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #f1f5f9;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+::selection {
+  background: #bfdbfe;
+  color: #172554;
+}
