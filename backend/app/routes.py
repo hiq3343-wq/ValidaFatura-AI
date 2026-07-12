@@ -7,7 +7,10 @@ from pydantic import BaseModel
 
 from app.ai import interpretar_documento
 from app.comparator import comparar_transacoes
-from app.services import processar_documento
+from app.services import (
+    processar_documento,
+    processar_documentos_em_lote,
+)
 
 
 router = APIRouter()
@@ -59,27 +62,30 @@ async def validar(
             caminho_fatura
         )
 
-        resultado_recibos = []
+        documentos_recibos = []
 
         for recibo in recibos:
-            caminho = os.path.join(
+            caminho_recibo = os.path.join(
                 UPLOAD_FOLDER,
                 recibo.filename
             )
 
-            with open(caminho, "wb") as buffer:
+            with open(caminho_recibo, "wb") as buffer:
                 shutil.copyfileobj(
                     recibo.file,
                     buffer
                 )
 
-            transacoes = processar_documento(
-                caminho
+            documentos_recibos.append(
+                (
+                    recibo.filename,
+                    caminho_recibo
+                )
             )
 
-            resultado_recibos.extend(
-                transacoes
-            )
+        resultado_recibos = processar_documentos_em_lote(
+            documentos_recibos
+        )
 
         comparacao = comparar_transacoes(
             transacoes_fatura,
@@ -96,16 +102,18 @@ async def validar(
         raise HTTPException(
             status_code=500,
             detail=str(erro)
-        )
+        ) from erro
 
 
 @router.post("/teste-ia")
 def teste_ia(request: TextoRequest):
     try:
-        return interpretar_documento(request.texto)
+        return interpretar_documento(
+            request.texto
+        )
 
     except Exception as erro:
         raise HTTPException(
             status_code=500,
             detail=str(erro)
-        )
+        ) from erro
