@@ -1,95 +1,57 @@
-# 💳 ValidaFatura AI
+# ValidaFatura AI
 
-Sistema inteligente para validação automática de faturas de cartão de crédito através de Inteligência Artificial e OCR.
+Sistema web para comparar os lançamentos de uma fatura de cartão
+com recibos e comprovantes enviados pelo usuário.
 
-## 🚀 Funcionalidades
+🔗 Demonstração: https://valida-fatura-ai.vercel.app
 
-- 📄 Leitura de faturas em PDF
-- 📷 Leitura de comprovantes em JPG, JPEG, PNG e WebP
-- 🤖 Extração inteligente utilizando IA (Groq)
-- 🔍 OCR utilizando Tesseract
-- 💳 Reconhecimento de compras parceladas
-- 📊 Comparação automática entre fatura e comprovantes
-- ✅ Identificação de compras confirmadas
-- ⚠️ Identificação de compras sem comprovante
-- 🌐 Interface Web moderna
+## Objetivo
 
----
+Automatizar a conferência de comprovantes contra uma fatura,
+identificando compras confirmadas, parceladas, divergentes
+ou sem comprovante.
+
+## Como funciona
+
+1. A fatura em PDF é processada.
+2. O texto é enviado à IA para extrair as compras.
+3. Os comprovantes passam por OCR.
+4. Um parser extrai empresa, valor, data e parcelas.
+5. O comparador cruza os dados.
+6. O frontend apresenta os resultados.
+
+## Decisões técnicas
+
+- IA na fatura, pois o layout varia entre bancos.
+- OCR e parser nos comprovantes para reduzir tokens e custo.
+- RapidFuzz para comparar nomes com diferenças de formatação.
+- Docker para instalar e executar o Tesseract no Render.
+
+## Status retornados
+
+- Confirmado
+- Confirmado parcelado
+- Data divergente
+- Não encontrado
+- Sem comprovante
 
 ## Tecnologias
 
-### Backend
+...
 
-- FastAPI
-- Python
-- Groq API
-- Tesseract OCR
-- pdfplumber
-- pypdfium2
-- RapidFuzz
+## Execução local
 
-### Frontend
+...
 
-- Next.js
-- React
-- TypeScript
-- Tailwind CSS
+## Limitações
 
----
+- OCR depende da qualidade da imagem.
+- O desempenho varia conforme os recursos do servidor.
+- O parser pode precisar de novos rótulos para layouts muito diferentes.
 
-## Como executar
+## Melhorias futuras
 
-### Backend
-
-```bash
-cd backend
-
-pip install -r requirements.txt
-
-uvicorn main:app --reload
-```
-
-### Frontend
-
-```bash
-cd frontend
-
-npm install
-
-npm run dev
-```
-
----
-
-## Variáveis de ambiente
-
-Backend (.env)
-
-```
-GROQ_API_KEY=sua_api_key
-```
-
-Frontend (.env.local)
-
-```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
----
-
-## Demonstração
-
-O sistema realiza:
-
-- Upload da fatura
-- Upload dos comprovantes
-- OCR dos documentos
-- Extração inteligente via IA
-- Comparação automática
-- Exibição do resultado
-
----
-
-## Autor
-
-Henrique Batista
+- testes automatizados;
+- limpeza automática de uploads;
+- processamento assíncrono;
+- suporte a armazenamento externo.
