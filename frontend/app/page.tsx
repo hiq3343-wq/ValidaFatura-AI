@@ -250,7 +250,7 @@ export default function Home() {
       "CONFIRMADO - CONVERSÃO CAMBIAL"
     ) {
       return {
-        texto: "Confirmado · Câmbio",
+        texto: "Confirmado · Conversão Cambial",
         classes:
           "border-violet-200 bg-violet-100 text-violet-800",
         icone: CheckCircle2,
@@ -262,7 +262,7 @@ export default function Home() {
       "CONFIRMADO - ITEM DA NF"
     ) {
       return {
-        texto: "Confirmado · Item da NF",
+        texto: "Confirmado · Item da Nota Fiscal",
         classes:
           "border-cyan-200 bg-cyan-100 text-cyan-800",
         icone: FileCheck2,
