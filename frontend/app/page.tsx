@@ -42,7 +42,8 @@ type Comparacao = {
     | "confirmado"
     | "divergencia_data"
     | "nao_encontrado"
-    | "sem_comprovante";
+    | "sem_comprovante"
+    | "revisao_cambial";
 
   status: string;
 
@@ -231,16 +232,11 @@ export default function Home() {
 
 
   function configurarStatus(status: string) {
-    if (status === "CONFIRMADO") {
-      return {
-        texto: "Confirmado",
-        classes:
-          "border-emerald-200 bg-emerald-100 text-emerald-800",
-        icone: CheckCircle2,
-      };
-    }
+    const statusNormalizado = status
+      .trim()
+      .toUpperCase();
 
-    if (status === "CONFIRMADO - PARCELADO") {
+    if (statusNormalizado === "CONFIRMADO - PARCELADO") {
       return {
         texto: "Confirmado · Parcelado",
         classes:
@@ -249,10 +245,52 @@ export default function Home() {
       };
     }
 
-    if (status.includes("DIFERENTE")) {
+    if (
+      statusNormalizado ===
+      "CONFIRMADO - CONVERSÃO CAMBIAL"
+    ) {
+      return {
+        texto: "Confirmado · Câmbio",
+        classes:
+          "border-violet-200 bg-violet-100 text-violet-800",
+        icone: CheckCircle2,
+      };
+    }
+
+    if (
+      statusNormalizado ===
+      "CONFIRMADO - ITEM DA NF"
+    ) {
+      return {
+        texto: "Confirmado · Item da NF",
+        classes:
+          "border-cyan-200 bg-cyan-100 text-cyan-800",
+        icone: FileCheck2,
+      };
+    }
+
+    if (statusNormalizado.startsWith("CONFIRMADO")) {
+      return {
+        texto: "Confirmado",
+        classes:
+          "border-emerald-200 bg-emerald-100 text-emerald-800",
+        icone: CheckCircle2,
+      };
+    }
+
+    if (statusNormalizado === "REVISÃO CAMBIAL") {
+      return {
+        texto: "Revisão cambial",
+        classes:
+          "border-amber-200 bg-amber-100 text-amber-800",
+        icone: CircleAlert,
+      };
+    }
+
+    if (statusNormalizado.includes("DIFERENTE")) {
       return {
         texto:
-          status === "DATA DIFERENTE"
+          statusNormalizado === "DATA DIFERENTE"
             ? "Data divergente"
             : "Valor divergente",
         classes:
@@ -260,7 +298,8 @@ export default function Home() {
         icone: CircleAlert,
       };
     }
-        if (status === "SEM COMPROVANTE") {
+
+    if (statusNormalizado === "SEM COMPROVANTE") {
       return {
         texto: "Sem comprovante",
         classes:
@@ -277,7 +316,6 @@ export default function Home() {
     };
   }
 
-
   const totalConfirmados = useMemo(() => {
     return (
       resultado?.comparacao.filter(
@@ -292,7 +330,8 @@ export default function Home() {
       resultado?.comparacao.filter(
         (item) =>
           item.resultado === "divergencia_data" ||
-          item.resultado === "nao_encontrado"
+          item.resultado === "nao_encontrado" ||
+          item.resultado === "revisao_cambial"
       ).length ?? 0
     );
   }, [resultado]);
@@ -559,7 +598,7 @@ export default function Home() {
               <ResumoCard
                 titulo="Comprovantes"
                 valor={resultado.transacoes_recibos.length}
-                descricao="Documentos processados"
+                descricao="Transações extraídas"
                 classes="border-violet-200 bg-violet-50 text-violet-800"
                 icone={<ReceiptText size={22} />}
               />
