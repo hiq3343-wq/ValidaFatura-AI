@@ -66,21 +66,17 @@ def extrair_data(
 
     if resultado_textual:
         dia = int(resultado_textual.group(1))
-        mes_texto = resultado_textual.group(2)
+        mes = MESES.get(resultado_textual.group(2))
         ano_texto = resultado_textual.group(3)
-
-        mes = MESES.get(mes_texto)
 
         if not mes:
             return None
 
-        ano = (
-            int(ano_texto)
-            if ano_texto
-            else None
+        return (
+            dia,
+            mes,
+            int(ano_texto) if ano_texto else None,
         )
-
-        return dia, mes, ano
 
     resultado_numerico = re.search(
         r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b",
@@ -92,12 +88,8 @@ def extrair_data(
         mes = int(resultado_numerico.group(2))
         ano = int(resultado_numerico.group(3))
 
-        if not 1 <= mes <= 12:
-            return None
-
         try:
             date(ano, mes, dia)
-
         except ValueError:
             return None
 
@@ -119,17 +111,8 @@ def diferenca_dias(
     dia_recibo, mes_recibo, ano_recibo = recibo
     dia_fatura, mes_fatura, ano_fatura = fatura
 
-    ano_recibo_final = (
-        ano_recibo
-        or ano_fatura
-        or 2026
-    )
-
-    ano_fatura_final = (
-        ano_fatura
-        or ano_recibo
-        or 2026
-    )
+    ano_recibo_final = ano_recibo or ano_fatura or 2026
+    ano_fatura_final = ano_fatura or ano_recibo or 2026
 
     try:
         primeira_data = date(
@@ -150,6 +133,59 @@ def diferenca_dias(
 
     except ValueError:
         return None
+
+
+def obter_valor_comparacao(
+    recibo: dict
+) -> tuple[float, bool]:
+    """
+    Retorna o valor em BRL usado na comparação e informa
+    se houve tratamento cambial.
+    """
+    moeda = str(
+        recibo.get("moeda", "BRL")
+    ).upper()
+
+    valor_convertido = recibo.get(
+        "valor_convertido"
+    )
+
+    if valor_convertido not in {
+        None,
+        "",
+    }:
+        try:
+            return float(valor_convertido), moeda != "BRL"
+        except (TypeError, ValueError):
+            pass
+
+    valor_original = recibo.get(
+        "valor_original"
+    )
+
+    cotacao = recibo.get("cotacao")
+
+    if (
+        moeda != "BRL"
+        and valor_original not in {None, ""}
+        and cotacao not in {None, ""}
+    ):
+        try:
+            valor_calculado = (
+                float(valor_original)
+                * float(cotacao)
+            )
+
+            return round(valor_calculado, 2), True
+
+        except (TypeError, ValueError):
+            pass
+
+    try:
+        return float(recibo.get("valor", 0)), False
+
+    except (TypeError, ValueError):
+        return 0.0, False
 
 
 def verificar_parcelamento(
@@ -207,7 +243,9 @@ def verificar_parcelamento(
 
 def definir_status(
     parcelada: bool,
-    diferenca: int | None
+    diferenca: int | None,
+    conversao_cambial: bool,
+    tipo_documento: str | None
 ) -> tuple[str, str]:
     if parcelada:
         return (
@@ -224,10 +262,48 @@ def definir_status(
             "DATA DIFERENTE"
         )
 
+    if conversao_cambial:
+        return (
+            "confirmado",
+            "CONFIRMADO - CONVERSÃO CAMBIAL"
+        )
+
+    if tipo_documento == "nota_fiscal":
+        return (
+            "confirmado",
+            "CONFIRMADO - ITEM DA NF"
+        )
+
     return (
         "confirmado",
         "CONFIRMADO"
     )
+
+
+def dados_extras_recibo(
+    recibo: dict
+) -> dict:
+    return {
+        "tipo_documento": recibo.get(
+            "tipo_documento"
+        ),
+        "descricao_item": recibo.get(
+            "descricao_item"
+        ),
+        "moeda": recibo.get(
+            "moeda",
+            "BRL"
+        ),
+        "valor_original": recibo.get(
+            "valor_original"
+        ),
+        "valor_convertido": recibo.get(
+            "valor_convertido"
+        ),
+        "cotacao": recibo.get(
+            "cotacao"
+        ),
+    }
 
 
 def comparar_transacoes(
@@ -242,8 +318,14 @@ def comparar_transacoes(
             str(recibo.get("empresa", ""))
         )
 
-        valor_recibo = float(
-            recibo.get("valor", 0)
+        valor_recibo, conversao_cambial = (
+            obter_valor_comparacao(recibo)
+        )
+
+        tolerancia_valor = (
+            0.15
+            if conversao_cambial
+            else 0.02
         )
 
         candidatos = []
@@ -267,7 +349,7 @@ def comparar_transacoes(
             valores_iguais = (
                 abs(
                     valor_recibo - valor_fatura
-                ) <= 0.02
+                ) <= tolerancia_valor
             )
 
             compra_parcelada = (
@@ -292,6 +374,11 @@ def comparar_transacoes(
             if similaridade < 55:
                 continue
 
+            diferenca = diferenca_dias(
+                recibo.get("data"),
+                compra.get("data")
+            )
+
             candidatos.append({
                 "indice": indice,
                 "compra": compra,
@@ -300,12 +387,29 @@ def comparar_transacoes(
                     2
                 ),
                 "parcelada": compra_parcelada,
+                "diferenca": diferenca,
             })
 
         if not candidatos:
+            moeda = str(
+                recibo.get("moeda", "BRL")
+            ).upper()
+
+            resultado = (
+                "revisao_cambial"
+                if moeda != "BRL"
+                else "nao_encontrado"
+            )
+
+            status = (
+                "REVISÃO CAMBIAL"
+                if moeda != "BRL"
+                else "NÃO ENCONTRADO"
+            )
+
             resultados.append({
-                "resultado": "nao_encontrado",
-                "status": "NÃO ENCONTRADO",
+                "resultado": resultado,
+                "status": status,
                 "empresa": recibo.get("empresa"),
                 "empresa_fatura": None,
                 "recibo": valor_recibo,
@@ -323,6 +427,7 @@ def comparar_transacoes(
                 "arquivo_origem": recibo.get(
                     "arquivo_origem"
                 ),
+                **dados_extras_recibo(recibo),
             })
 
             continue
@@ -330,7 +435,13 @@ def comparar_transacoes(
         melhor_candidato = max(
             candidatos,
             key=lambda candidato: (
-                candidato["similaridade"]
+                candidato["similaridade"],
+                -(
+                    candidato["diferenca"]
+                    if candidato["diferenca"]
+                    is not None
+                    else 9999
+                ),
             )
         )
 
@@ -340,17 +451,19 @@ def comparar_transacoes(
         similaridade = melhor_candidato[
             "similaridade"
         ]
+        diferenca = melhor_candidato[
+            "diferenca"
+        ]
 
         indices_utilizados.add(indice)
 
-        diferenca = diferenca_dias(
-            recibo.get("data"),
-            compra.get("data")
-        )
-
         resultado, status = definir_status(
-            parcelada,
-            diferenca
+            parcelada=parcelada,
+            diferenca=diferenca,
+            conversao_cambial=conversao_cambial,
+            tipo_documento=recibo.get(
+                "tipo_documento"
+            ),
         )
 
         parcela_atual = (
@@ -383,6 +496,7 @@ def comparar_transacoes(
             "arquivo_origem": recibo.get(
                 "arquivo_origem"
             ),
+            **dados_extras_recibo(recibo),
         })
 
     for indice, compra in enumerate(fatura):
@@ -411,6 +525,12 @@ def comparar_transacoes(
                 "total_parcelas"
             ),
             "arquivo_origem": None,
+            "tipo_documento": None,
+            "descricao_item": None,
+            "moeda": "BRL",
+            "valor_original": None,
+            "valor_convertido": None,
+            "cotacao": None,
         })
 
     return resultados

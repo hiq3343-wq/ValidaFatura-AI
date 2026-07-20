@@ -106,6 +106,11 @@ async def validar(
             for item in comparacao
         )
 
+        revisoes_cambiais = sum(
+            item.get("resultado") == "revisao_cambial"
+            for item in comparacao
+        )
+
         divergencias = sum(
             item.get("resultado")
             in {
@@ -123,6 +128,12 @@ async def validar(
         pendencias = (
             divergencias
             + sem_comprovante
+            + revisoes_cambiais
+        )
+
+        itens_nota_fiscal = sum(
+            item.get("tipo_documento") == "nota_fiscal"
+            for item in resultado_recibos
         )
 
         return {
@@ -131,9 +142,14 @@ async def validar(
                     transacoes_fatura
                 ),
                 "comprovantes": len(
+                    documentos_recibos
+                ),
+                "transacoes_extraidas_comprovantes": len(
                     resultado_recibos
                 ),
+                "itens_nota_fiscal": itens_nota_fiscal,
                 "confirmados": confirmados,
+                "revisoes_cambiais": revisoes_cambiais,
                 "divergencias": divergencias,
                 "sem_comprovante": sem_comprovante,
                 "pendencias": pendencias,

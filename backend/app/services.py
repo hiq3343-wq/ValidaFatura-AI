@@ -2,7 +2,7 @@ import time
 
 from app.ai import interpretar_documento
 from app.extractor import extrair_texto
-from app.receipt_parser import interpretar_comprovante
+from app.receipt_parser import interpretar_comprovantes
 
 
 def processar_documento(
@@ -61,6 +61,16 @@ def processar_documento(
 def processar_documentos_em_lote(
     documentos: list[tuple[str, str]]
 ) -> list[dict]:
+    """
+    Um arquivo pode gerar uma ou várias transações.
+
+    Exemplos:
+    - comprovante comum: uma transação;
+    - nota fiscal com vários itens: várias transações;
+    - comprovante em moeda estrangeira: uma transação
+      contendo moeda, valor original, cotação e valor
+      convertido.
+    """
     transacoes = []
 
     for indice, (nome_arquivo, caminho_arquivo) in enumerate(
@@ -84,13 +94,21 @@ def processar_documentos_em_lote(
         if not texto.strip():
             continue
 
-        texto = texto[:4000]
+        texto = texto[:12000]
 
-        transacoes.append(
-            interpretar_comprovante(
-                texto=texto,
-                nome_arquivo=nome_arquivo
-            )
+        transacoes_documento = interpretar_comprovantes(
+            texto=texto,
+            nome_arquivo=nome_arquivo
+        )
+
+        transacoes.extend(
+            transacoes_documento
+        )
+
+        print(
+            f">>> {nome_arquivo}: "
+            f"{len(transacoes_documento)} "
+            "transação(ões) extraída(s)."
         )
 
     if not transacoes:

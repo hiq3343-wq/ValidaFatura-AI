@@ -530,6 +530,290 @@ def extrair_parcelamento(
     return None, None
 
 
+def eh_nota_fiscal(texto: str) -> bool:
+    texto_normalizado = normalizar_texto(texto)
+
+    indicadores = (
+        "NOTA FISCAL",
+        "NF-E",
+        "NFE",
+        "DANFE",
+        "DOCUMENTO AUXILIAR DA NOTA FISCAL",
+    )
+
+    return any(
+        indicador in texto_normalizado
+        for indicador in indicadores
+    )
+
+
+def extrair_empresa_nota_fiscal(
+    texto: str
+) -> str | None:
+    linhas = limpar_texto(texto).splitlines()
+
+    rotulos = (
+        "EMITENTE",
+        "RAZAO SOCIAL",
+        "RAZÃO SOCIAL",
+        "FORNECEDOR",
+    )
+
+    for indice, linha in enumerate(linhas):
+        linha_normalizada = normalizar_texto(linha)
+
+        for rotulo in rotulos:
+            rotulo_normalizado = normalizar_texto(rotulo)
+
+            if rotulo_normalizado not in linha_normalizada:
+                continue
+
+            valor_mesma_linha = (
+                extrair_valor_rotulo_mesma_linha(
+                    linha,
+                    rotulo
+                )
+            )
+
+            if valor_mesma_linha:
+                return valor_mesma_linha
+
+            if indice + 1 < len(linhas):
+                candidato = linhas[indice + 1]
+
+                if linha_parece_empresa(candidato):
+                    return candidato
+
+    return extrair_empresa(texto)
+
+
+def extrair_dados_cambiais(
+    texto: str
+) -> dict:
+    texto_normalizado = normalizar_texto(texto)
+
+    valor_original = None
+    valor_convertido = None
+    cotacao = None
+    moeda = "BRL"
+
+    padroes_valor_original = (
+        r"\b(?:US\$|USD)\s*"
+        r"(\d{1,6}(?:\.\d{3})*[,.]\d{2})\b",
+
+        r"(?:VALOR ORIGINAL|ORIGINAL)"
+        r"[^0-9]{0,25}"
+        r"(\d{1,6}(?:\.\d{3})*[,.]\d{2})"
+        r"\s*(?:USD|DOLARES?|DOLARS?)",
+    )
+
+    for padrao in padroes_valor_original:
+        resultado = re.search(
+            padrao,
+            texto_normalizado
+        )
+
+        if resultado:
+            try:
+                valor_original = converter_valor(
+                    resultado.group(1)
+                )
+                moeda = "USD"
+                break
+            except ValueError:
+                pass
+
+    padroes_valor_convertido = (
+        r"(?:VALOR CONVERTIDO|CONVERTIDO EM REAIS|"
+        r"VALOR EM BRL|VALOR EM REAIS)"
+        r"[^0-9]{0,30}"
+        r"R?\$?\s*"
+        r"(\d{1,6}(?:\.\d{3})*[,.]\d{2})",
+
+        r"(?:TOTAL CONVERTIDO)"
+        r"[^0-9]{0,30}"
+        r"R?\$?\s*"
+        r"(\d{1,6}(?:\.\d{3})*[,.]\d{2})",
+    )
+
+    for padrao in padroes_valor_convertido:
+        resultado = re.search(
+            padrao,
+            texto_normalizado
+        )
+
+        if resultado:
+            try:
+                valor_convertido = converter_valor(
+                    resultado.group(1)
+                )
+                break
+            except ValueError:
+                pass
+
+    padroes_cotacao = (
+        r"(?:COTACAO|CÂMBIO|CAMBIO)"
+        r"[^0-9]{0,30}"
+        r"R?\$?\s*"
+        r"(\d{1,3}[,.]\d{2,6})",
+
+        r"R\$\s*(\d{1,3}[,.]\d{2,6})"
+        r"\s*(?:POR|/)\s*(?:US\$|USD)",
+
+        r"(?:1\s*(?:US\$|USD))"
+        r"[^0-9]{0,20}"
+        r"R\$\s*(\d{1,3}[,.]\d{2,6})",
+    )
+
+    for padrao in padroes_cotacao:
+        resultado = re.search(
+            padrao,
+            texto_normalizado
+        )
+
+        if resultado:
+            try:
+                cotacao = converter_valor(
+                    resultado.group(1)
+                )
+                break
+            except ValueError:
+                pass
+
+    if (
+        valor_convertido is None
+        and valor_original is not None
+        and cotacao is not None
+    ):
+        valor_convertido = round(
+            valor_original * cotacao,
+            2
+        )
+
+    return {
+        "moeda": moeda,
+        "valor_original": valor_original,
+        "valor_convertido": valor_convertido,
+        "cotacao": cotacao,
+    }
+
+
+def extrair_itens_nota_fiscal(
+    texto: str,
+    nome_arquivo: str | None = None
+) -> list[dict]:
+    linhas = limpar_texto(texto).splitlines()
+
+    empresa = (
+        extrair_empresa_nota_fiscal(texto)
+        or "NÃO IDENTIFICADO"
+    )
+
+    data = extrair_data(texto)
+
+    termos_ignorados = (
+        "TOTAL",
+        "SUBTOTAL",
+        "DESCONTO",
+        "FRETE",
+        "IMPOSTO",
+        "TRIBUTO",
+        "VALOR DA NOTA",
+        "VALOR TOTAL",
+        "CNPJ",
+        "CPF",
+        "CHAVE DE ACESSO",
+        "FORMA DE PAGAMENTO",
+        "OBSERVACAO",
+        "OBSERVAÇÃO",
+    )
+
+    padrao_valor_final = re.compile(
+        r"(?:R\$\s*)?"
+        r"(\d{1,6}(?:\.\d{3})*,\d{2}"
+        r"|\d{1,6}\.\d{2})"
+        r"\s*$",
+        flags=re.IGNORECASE,
+    )
+
+    itens = []
+    vistos = set()
+
+    for linha in linhas:
+        linha_normalizada = normalizar_texto(linha)
+
+        if any(
+            termo in linha_normalizada
+            for termo in termos_ignorados
+        ):
+            continue
+
+        resultado_valor = padrao_valor_final.search(
+            linha
+        )
+
+        if not resultado_valor:
+            continue
+
+        try:
+            valor = converter_valor(
+                resultado_valor.group(1)
+            )
+        except ValueError:
+            continue
+
+        if valor <= 0:
+            continue
+
+        descricao = linha[
+            :resultado_valor.start()
+        ].strip(" :-–|")
+
+        descricao = re.sub(
+            r"\s+\d+(?:[,.]\d+)?\s*$",
+            "",
+            descricao
+        ).strip(" :-–|")
+
+        if not descricao:
+            continue
+
+        quantidade_letras = sum(
+            caractere.isalpha()
+            for caractere in descricao
+        )
+
+        if quantidade_letras < 3:
+            continue
+
+        chave = (
+            normalizar_texto(descricao),
+            round(valor, 2),
+        )
+
+        if chave in vistos:
+            continue
+
+        vistos.add(chave)
+
+        itens.append({
+            "empresa": empresa,
+            "descricao_item": descricao,
+            "valor": valor,
+            "data": data,
+            "parcela_atual": None,
+            "total_parcelas": None,
+            "arquivo_origem": nome_arquivo,
+            "tipo_documento": "nota_fiscal",
+            "moeda": "BRL",
+            "valor_original": valor,
+            "valor_convertido": valor,
+            "cotacao": None,
+        })
+
+    return itens
+
+
 def interpretar_comprovante(
     texto: str,
     nome_arquivo: str | None = None
@@ -542,11 +826,68 @@ def interpretar_comprovante(
         extrair_parcelamento(texto)
     )
 
+    dados_cambiais = extrair_dados_cambiais(
+        texto
+    )
+
+    valor_convertido = dados_cambiais[
+        "valor_convertido"
+    ]
+
+    valor_comparacao = (
+        valor_convertido
+        if valor_convertido is not None
+        else valor
+    )
+
     return {
         "empresa": empresa or "NÃO IDENTIFICADO",
-        "valor": valor if valor is not None else 0,
+        "valor": (
+            valor_comparacao
+            if valor_comparacao is not None
+            else 0
+        ),
         "data": data,
         "parcela_atual": parcela_atual,
         "total_parcelas": total_parcelas,
         "arquivo_origem": nome_arquivo,
+        "tipo_documento": "comprovante",
+        "moeda": dados_cambiais["moeda"],
+        "valor_original": dados_cambiais[
+            "valor_original"
+        ],
+        "valor_convertido": valor_convertido,
+        "cotacao": dados_cambiais["cotacao"],
+        "descricao_item": None,
     }
+
+
+def interpretar_comprovantes(
+    texto: str,
+    nome_arquivo: str | None = None
+) -> list[dict]:
+    """
+    Retorna uma lista porque um único documento pode
+    representar uma ou várias transações.
+
+    Comprovante comum:
+        retorna uma lista com um elemento.
+
+    Nota fiscal com vários itens:
+        retorna uma transação para cada item identificado.
+    """
+    if eh_nota_fiscal(texto):
+        itens = extrair_itens_nota_fiscal(
+            texto,
+            nome_arquivo
+        )
+
+        if itens:
+            return itens
+
+    return [
+        interpretar_comprovante(
+            texto,
+            nome_arquivo
+        )
+    ]
